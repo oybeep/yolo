@@ -3,32 +3,33 @@ from ultralytics import YOLO
 from flask import Flask, Response
 
 app = Flask(__name__)
+
 model = YOLO('/home/team-d/obstacle_detection/best_incomplete_ncnn_model', task='detect')
 
 def generate_frames():
     cap = cv2.VideoCapture(0)
-    
+
+    count = 0 
+    annotated_frame = None
+
     while True:
         success, frame = cap.read()
         if not success:
             break
+        
+        count += 1
 
-        results = model.predict(frame, imgsz=320, conf=0.5, verbose=False)
+        if count % 3 == 0:
+            results = model.predict(frame, imgsz=160, conf=0.5, verbose=False)
 
-        for r in results:
-            boxes = r.boxes
-            for box in boxes:
-                x1, y1, x2, y2 = box.xyxy[0]
+            annotated_frame = results[0].plot(line_width=2, labels=True, boxes=True)
 
-                cls = int(box.cls[0])
-                class_name = model.names[cls]
+        if annotated_frame is None:
+            display_frame = frame
+        else:
+            display_frame = annotated_frame
 
-                if class_name in ['self_service_cafe', 'water_dispenser']:
-                    continue 
-
-                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-
-        ret, buffer = cv2.imencode('.jpg', frame)
+        ret, buffer = cv2.imencode('.jpg', display_frame)
         frame_bytes = buffer.tobytes()
         
         yield (b'--frame\r\n'
@@ -36,11 +37,11 @@ def generate_frames():
 
 @app.route('/')
 def index():
-    return '<img src="/video_feed" style="width:100%; height:auto;">'
+    return '<body style="margin:0; background:#000;"><img src="/video_feed" style="width:100%; height:auto;"></body>'
 
 @app.route('/video_feed')
 def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, threaded=True)
